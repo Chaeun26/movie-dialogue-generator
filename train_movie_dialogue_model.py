@@ -2,7 +2,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingA
 from datasets import Dataset
 import os
 
-tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
 tokenizer.pad_token = tokenizer.eos_token
 
 line_map = {}
@@ -18,8 +18,11 @@ with open("movie_conversations.txt", "r", encoding="iso-8859-1") as f:
         parts = line.strip().split(" +++$+++ ")
         if len(parts) == 4:
             line_ids = eval(parts[3])
-            dialogue = "\n".join([line_map.get(lid, "Unknown") for lid in line_ids]) + tokenizer.eos_token
-            conversations.append(dialogue)
+            lines = [line_map.get(lid, "Unknown") for lid in line_ids]
+            for i in range(len(lines) - 1):
+                if "?" in lines[i]:
+                    dialogue = f"Prompt: {lines[i]}\nResponse: {lines[i+1]}{tokenizer.eos_token}"
+                    conversations.append(dialogue)
 
 dataset = Dataset.from_dict({"text": conversations})
 
@@ -35,14 +38,14 @@ eval_dataset = split_dataset["test"]
 train_dataset.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
 eval_dataset.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
 
-model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+model = AutoModelForCausalLM.from_pretrained("gpt2")
 
 training_args = TrainingArguments(
     output_dir="./movie_dialogue_model",
     overwrite_output_dir=True,
-    num_train_epochs=10,
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=8,
+    num_train_epochs=15,
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
     eval_steps=200,
     save_steps=1000,
     warmup_steps=1000,
@@ -51,12 +54,13 @@ training_args = TrainingArguments(
     eval_strategy="steps",
     save_total_limit=2,
     load_best_model_at_end=True,
-    learning_rate=5e-5,
+    learning_rate=3e-5,
     weight_decay=0.1,
-    gradient_accumulation_steps=4,
+    gradient_accumulation_steps=8,
     fp16=True,
     report_to="none",
     optim="adamw_torch",
+    lr_scheduler_type="cosine",
 )
 
 data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
